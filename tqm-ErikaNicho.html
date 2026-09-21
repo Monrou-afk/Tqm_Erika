@@ -1,0 +1,798 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light">
+<title>Te amo Erika</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700&family=Great+Vibes&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #f7e7dc;
+    --ink: #1c1408;
+    --halo: rgba(255, 213, 79, .95);
+    --gold: #f2a51a;
+    box-sizing: border-box;
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  html { scroll-padding-top: env(safe-area-inset-top, 0px); }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    height: 100%;
+    width: 100%;
+    overflow: hidden;
+    background: var(--bg);
+    color: var(--ink);
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+  canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+
+  /* punto inicial */
+  .start {
+    position: fixed;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1.3rem;
+    pointer-events: none;
+    transition: opacity .35s ease;
+  }
+  .start.gone { opacity: 0; }
+  .dot {
+    width: 20px; height: 20px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 35%, #ffd35c, var(--gold) 55%, #c9780c);
+    animation: ring 2s ease-out infinite;
+  }
+  @keyframes ring {
+    0%   { box-shadow: 0 0 0 0 rgba(242, 165, 26, .55); }
+    100% { box-shadow: 0 0 0 40px rgba(242, 165, 26, 0); }
+  }
+  .start p {
+    font-family: "Cinzel", Georgia, serif;
+    font-weight: 600;
+    font-size: .95rem;
+    letter-spacing: .06em;
+    opacity: .75;
+  }
+
+  /* texto */
+  .txt {
+    position: fixed;
+    font-family: "Cinzel", Georgia, "Times New Roman", serif;
+    font-weight: 700;
+    line-height: 1.5;
+    text-shadow: 0 0 1px var(--halo), 0 0 6px var(--halo), 0 0 14px rgba(255, 213, 79, .55);
+    pointer-events: none;
+  }
+  .txt h1 { font-size: 1em; font-weight: 700; line-height: 1.45; margin-bottom: 1.2em; }
+  .txt p  { white-space: pre-wrap; }
+  .txt .sign { text-align: right; margin-top: .6em; font-size: 1.12em; }
+  .cursor { animation: blink 1s steps(1) infinite; margin-left: 1px; }
+  @keyframes blink { 50% { opacity: 0; } }
+
+  .foot {
+    position: fixed;
+    font-family: "Great Vibes", "Snell Roundhand", cursive;
+    color: var(--ink);
+    text-shadow: 0 0 1px var(--halo), 0 0 8px var(--halo);
+    opacity: 0;
+    transition: opacity 1.6s ease;
+    pointer-events: none;
+    white-space: nowrap;
+  }
+  .foot.on { opacity: 1; }
+
+  .hint {
+    position: fixed;
+    left: 0; right: 0;
+    bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+    text-align: center;
+    font-family: "Cinzel", Georgia, serif;
+    font-weight: 600;
+    font-size: .8rem;
+    letter-spacing: .05em;
+    opacity: 0;
+    transition: opacity 1.4s ease;
+    pointer-events: none;
+  }
+  .hint.on { opacity: .55; }
+
+  body.wide .txt { font-size: clamp(16px, 1.6vw, 30px); }
+  body.wide .foot { font-size: clamp(22px, 2.1vw, 38px); }
+  body.portrait .txt { font-size: clamp(13px, 3.8vw, 19px); }
+  body.portrait .foot { font-size: clamp(20px, 6vw, 28px); }
+</style>
+</head>
+<body class="wide">
+<canvas id="c"></canvas>
+
+<div class="start" id="start">
+  <div class="dot"></div>
+  <p>Toca para empezar</p>
+</div>
+
+<div class="txt" id="txt">
+  <h1 id="t1"></h1>
+  <p id="t2"></p>
+  <p class="sign" id="t3"></p>
+</div>
+<div class="foot" id="foot">Eres el sol que hace florecer cada uno de mis días.</div>
+<div class="hint" id="hint">Toca donde quieras para plantar más flores</div>
+
+<script>
+(() => {
+  const canvas = document.getElementById('c');
+  const mainCtx = canvas.getContext('2d');
+  let ctx = mainCtx;
+  const startEl = document.getElementById('start');
+  const txtEl = document.getElementById('txt');
+  const t1 = document.getElementById('t1');
+  const t2 = document.getElementById('t2');
+  const t3 = document.getElementById('t3');
+  const footEl = document.getElementById('foot');
+  const hintEl = document.getElementById('hint');
+
+  const rand = (a, b) => a + Math.random() * (b - a);
+  const clamp = (v, a = 0, b = 1) => Math.max(a, Math.min(b, v));
+  const easeOut = t => 1 - Math.pow(1 - t, 3);
+  const easeIn = t => t * t;
+  const easeInOut = t => t < .5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+  const easeBack = t => { const c1 = 1.70158, c3 = c1 + 1; return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2); };
+  const pick = arr => arr[Math.floor(Math.random() * arr.length)];
+  function mulberry(a) {
+    return function () {
+      a |= 0; a = a + 0x6D2B79F5 | 0;
+      let t = Math.imul(a ^ a >>> 15, 1 | a);
+      t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+      return ((t ^ t >>> 14) >>> 0) / 4294967296;
+    };
+  }
+
+  /* ================= Paletas ================= */
+  const LILY = [
+    ['#fffaf5', '#f7c6d6'],
+    ['#fff6ef', '#f4a9c2'],
+    ['#ffffff', '#e9d6f5'],
+    ['#fff3b0', '#ffd84d'],
+    ['#fff8e8', '#ffd0a8'],
+  ];
+  const GERBERA = [
+    ['#ff5a5f', '#ff8a7a'],
+    ['#ff8c2b', '#ffb55c'],
+    ['#ff4f9a', '#ff8cc0'],
+    ['#ffc800', '#ffe066'],
+    ['#ffb3c7', '#ffd6e0'],
+    ['#ffb700', '#ffdd55'],
+  ];
+  const AZALEA = [
+    ['#ffcf1f', '#fff08a'],
+    ['#ffbf00', '#ffe266'],
+  ];
+
+  /* ================= Formas (para los sprites) ================= */
+  function petalPath(len, w, pointy = 0.5) {
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.bezierCurveTo(w, -len * 0.25, w * (1 - pointy * 0.4), -len * (0.75 + pointy * 0.1), 0, -len);
+    ctx.bezierCurveTo(-w * (1 - pointy * 0.4), -len * (0.75 + pointy * 0.1), -w, -len * 0.25, 0, 0);
+    ctx.closePath();
+  }
+
+  function drawLily(s, pal, open, seed) {
+    const R = mulberry(Math.floor(seed * 1e4) + 1);
+    const rr = (a, b) => a + R() * (b - a);
+    ctx.scale(1, 0.82);
+    for (let layer = 0; layer < 2; layer++) {
+      for (let i = 0; i < 3; i++) {
+        const a = (i * 120 + layer * 60 + seed * 7) * Math.PI / 180;
+        ctx.save();
+        ctx.rotate(a);
+        const len = s * (layer ? 1 : 0.95) * open;
+        const w = s * 0.34 * open;
+        const g = ctx.createLinearGradient(0, 0, 0, -len);
+        g.addColorStop(0, '#ffe98a');
+        g.addColorStop(0.25, pal[0]);
+        g.addColorStop(1, pal[1]);
+        ctx.fillStyle = g;
+        petalPath(len, w, 0.9);
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(200,110,140,.35)';
+        ctx.lineWidth = 0.8;
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(0, -len * 0.08);
+        ctx.lineTo(0, -len * 0.8);
+        ctx.strokeStyle = 'rgba(210,150,90,.45)';
+        ctx.stroke();
+        ctx.fillStyle = 'rgba(190,80,110,.55)';
+        for (let k = 0; k < 6; k++) {
+          ctx.beginPath();
+          ctx.arc(rr(-w * .25, w * .25), -len * rr(.15, .45), s * 0.012 + .5, 0, 7);
+          ctx.fill();
+        }
+        ctx.restore();
+      }
+    }
+    for (let i = 0; i < 6; i++) {
+      const a = (i * 60 + 20) * Math.PI / 180;
+      const l = s * 0.55 * open;
+      const x = Math.sin(a) * l, y = -Math.cos(a) * l;
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.quadraticCurveTo(x * 0.4, y * 0.5, x, y);
+      ctx.strokeStyle = '#f4f0d0';
+      ctx.lineWidth = 1.4;
+      ctx.stroke();
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(a);
+      ctx.fillStyle = '#b5561f';
+      ctx.beginPath();
+      ctx.ellipse(0, 0, s * 0.04, s * 0.1, 0, 0, 7);
+      ctx.fill();
+      ctx.restore();
+    }
+  }
+
+  function drawGerbera(s, pal, open, seed) {
+    ctx.scale(1, 0.9);
+    const rings = [
+      { n: 26, len: 1.0, w: 0.085, off: 0 },
+      { n: 26, len: 0.86, w: 0.085, off: 0.5 },
+      { n: 20, len: 0.62, w: 0.075, off: 0.25 },
+    ];
+    rings.forEach((r, ri) => {
+      for (let i = 0; i < r.n; i++) {
+        const a = ((i + r.off) / r.n) * Math.PI * 2 + seed;
+        ctx.save();
+        ctx.rotate(a);
+        const len = s * r.len * open;
+        const w = s * r.w * open;
+        const g = ctx.createLinearGradient(0, 0, 0, -len);
+        g.addColorStop(0, pal[0]);
+        g.addColorStop(1, pal[1]);
+        ctx.fillStyle = ri === 2 ? pal[0] : g;
+        petalPath(len, w, 0.1);
+        ctx.fill();
+        ctx.restore();
+      }
+    });
+    const cr = s * 0.2 * open;
+    const cg = ctx.createRadialGradient(0, 0, 0, 0, 0, cr);
+    cg.addColorStop(0, '#5a2d12');
+    cg.addColorStop(0.7, '#3a1a0a');
+    cg.addColorStop(1, '#8a5a1a');
+    ctx.fillStyle = cg;
+    ctx.beginPath(); ctx.arc(0, 0, cr, 0, 7); ctx.fill();
+    ctx.fillStyle = '#f2c14e';
+    for (let i = 0; i < 18; i++) {
+      const a = i / 18 * Math.PI * 2;
+      ctx.beginPath();
+      ctx.arc(Math.cos(a) * cr * 0.78, Math.sin(a) * cr * 0.78, s * 0.018 + .4, 0, 7);
+      ctx.fill();
+    }
+    ctx.fillStyle = '#f7d774';
+    for (let i = 0; i < 8; i++) {
+      const a = i / 8 * Math.PI * 2 + .3;
+      ctx.beginPath();
+      ctx.arc(Math.cos(a) * cr * 0.4, Math.sin(a) * cr * 0.4, s * 0.014 + .3, 0, 7);
+      ctx.fill();
+    }
+  }
+
+  function azaleaBloom(s, pal, open, seed, R) {
+    const rr = (a, b) => a + R() * (b - a);
+    for (let i = 0; i < 5; i++) {
+      const a = (i / 5) * Math.PI * 2 + seed;
+      ctx.save();
+      ctx.rotate(a);
+      const len = s * open;
+      const w = s * 0.62 * open;
+      const g = ctx.createRadialGradient(0, 0, 0, 0, -len * 0.5, len);
+      g.addColorStop(0, '#f0a800');
+      g.addColorStop(0.35, pal[0]);
+      g.addColorStop(1, pal[1]);
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.bezierCurveTo(w * 1.1, -len * 0.3, w * 0.95, -len * 1.05, 0, -len * 0.92);
+      ctx.bezierCurveTo(-w * 0.95, -len * 1.05, -w * 1.1, -len * 0.3, 0, 0);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(200,130,0,.25)';
+      ctx.lineWidth = 0.7;
+      ctx.stroke();
+      if (i === 0) {
+        ctx.fillStyle = 'rgba(200,110,0,.5)';
+        for (let k = 0; k < 7; k++) {
+          ctx.beginPath();
+          ctx.arc(rr(-w * .3, w * .3), -len * rr(.2, .6), s * 0.02 + .4, 0, 7);
+          ctx.fill();
+        }
+      }
+      ctx.restore();
+    }
+    for (let i = 0; i < 5; i++) {
+      const a = (i / 5) * Math.PI * 2 + seed + 0.6;
+      const l = s * 0.95 * open;
+      const x = Math.cos(a) * l, y = Math.sin(a) * l;
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.quadraticCurveTo(x * 0.3, y * 0.3 - s * 0.2 * open, x, y);
+      ctx.strokeStyle = '#fff6c2';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      ctx.fillStyle = '#c96a12';
+      ctx.beginPath(); ctx.arc(x, y, s * 0.045 + .5, 0, 7); ctx.fill();
+    }
+  }
+
+  function drawAzalea(s, pal, open, seed) {
+    const R = mulberry(Math.floor(seed * 1e4) + 7);
+    const spots = [
+      [0, 0, 1, 0],
+      [-s * 0.95, s * 0.5, 0.78, 1.1],
+      [s * 0.9, s * 0.45, 0.72, 2.2],
+    ];
+    spots.forEach(([dx, dy, k, rot]) => {
+      ctx.save();
+      ctx.translate(dx * open, dy * open);
+      azaleaBloom(s * 0.72 * k, pal, open, seed + rot, R);
+      ctx.restore();
+    });
+  }
+
+  /* ================= Sprites (cada flor se dibuja una sola vez) ================= */
+  const SP = 3;
+  function makeSprite(type, pal, seed) {
+    const c = document.createElement('canvas');
+    c.width = c.height = 200 * SP;
+    const cc = c.getContext('2d');
+    cc.scale(SP, SP);
+    cc.translate(100, 100);
+    ctx = cc;
+    if (type === 'lily') drawLily(40, pal, 1, seed);
+    else if (type === 'gerbera') drawGerbera(40, pal, 1, seed);
+    else drawAzalea(40, pal, 1, seed);
+    ctx = mainCtx;
+    return c;
+  }
+  const SPR = { lily: [], gerbera: [], azalea: [] };
+  for (let i = 0; i < 6; i++) SPR.lily.push(makeSprite('lily', LILY[i % LILY.length], i * 1.7 + 1));
+  for (let i = 0; i < 8; i++) SPR.gerbera.push(makeSprite('gerbera', GERBERA[i % GERBERA.length], i * 2.3 + 0.5));
+  for (let i = 0; i < 6; i++) SPR.azalea.push(makeSprite('azalea', AZALEA[i % AZALEA.length], i * 1.3 + 2));
+  const TYPES = ['lily', 'gerbera', 'azalea'];
+  const sizeFactor = { lily: 1.05, gerbera: 1.0, azalea: 0.75 };
+
+  function drawSprite(spr, x, y, k, rot, alpha = 1) {
+    if (k <= 0.001) return;
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(rot);
+    if (alpha < 1) ctx.globalAlpha = alpha;
+    ctx.drawImage(spr, -100 * k, -100 * k, 200 * k, 200 * k);
+    ctx.restore();
+  }
+
+  /* ================= Layout ================= */
+  let W = 0, H = 0, DPR = 1;
+  const L = {};
+  function layout() {
+    DPR = Math.min(window.devicePixelRatio || 1, 2);
+    W = window.innerWidth; H = window.innerHeight;
+    canvas.width = W * DPR; canvas.height = H * DPR;
+    mainCtx.setTransform(DPR, 0, 0, DPR, 0, 0);
+
+    L.wide = W >= 820 && W / H > 1.05;
+    document.body.classList.toggle('wide', L.wide);
+    document.body.classList.toggle('portrait', !L.wide);
+
+    if (L.wide) {
+      L.HW = Math.min(W * 0.34, H * 0.6);
+      L.groundY = H * 0.8;
+      L.finalX = W * 0.62;
+      L.gx0 = W * 0.26; L.gx1 = W * 0.74;
+      L.dotY = H * 0.5;
+    } else {
+      L.HW = Math.min(W * 0.84, H * 0.42);
+      L.groundY = H * 0.5;
+      L.finalX = W / 2;
+      L.gx0 = W * 0.06; L.gx1 = W * 0.94;
+      L.dotY = H * 0.3;
+    }
+    L.startX = W / 2;
+    L.unit = L.HW / 2.28;
+    L.vis = L.HW * 0.2;
+    L.tipY = L.groundY - L.vis;
+    L.cy = L.tipY - L.unit * 0.95;
+    L.topY = L.cy - 1.25 * L.unit * 0.95;
+
+    startEl.style.top = L.dotY + 'px';
+
+    // texto
+    if (L.wide) {
+      const treeLeft = L.finalX - L.HW / 2;
+      const textW = Math.min(W * 0.33, 560);
+      const left = Math.max(24, treeLeft - 30 - textW);
+      txtEl.style.left = left + 'px';
+      txtEl.style.width = Math.min(textW, treeLeft - 30 - left) + 'px';
+      txtEl.style.top = Math.max(24, H * 0.2) + 'px';
+      txtEl.style.right = 'auto';
+      footEl.style.left = 'auto';
+      footEl.style.right = (W - (L.finalX - L.HW * 0.06)) + 'px';
+      footEl.style.bottom = (H - L.groundY + 10) + 'px';
+      footEl.style.textAlign = 'right';
+    } else {
+      txtEl.style.left = W * 0.07 + 'px';
+      txtEl.style.width = W * 0.86 + 'px';
+      txtEl.style.top = (L.groundY + 22) + 'px';
+      footEl.style.left = '0px';
+      footEl.style.right = '0px';
+      footEl.style.bottom = 'calc(32px + env(safe-area-inset-bottom, 0px))';
+      footEl.style.textAlign = 'center';
+    }
+  }
+
+  /* ================= Árbol ================= */
+  let tree = [];
+  let branches = [];
+  const heartIn = (u, v) => Math.pow(u * u + v * v - 1, 3) - u * u * v * v * v <= 0;
+
+  function buildTree() {
+    const cx = L.finalX, unit = L.unit, sy = 0.95;
+    const d = L.HW / 12.5;
+    const minD = d * 0.64;
+    const target = clamp(Math.round(Math.pow(L.HW / 650, 2) * 230), 90, 260);
+    const pts = [];
+    let tries = 0;
+    while (pts.length < target && tries < 12000) {
+      tries++;
+      const u = rand(-1.16, 1.16), v = rand(-1.02, 1.27);
+      if (!heartIn(u, v)) continue;
+      const x = cx + u * unit, y = L.cy - v * unit * sy;
+      let ok = true;
+      for (let i = 0; i < pts.length; i++) {
+        const dx = pts[i].x - x, dy = pts[i].y - y;
+        if (dx * dx + dy * dy < minD * minD) { ok = false; break; }
+      }
+      if (ok) pts.push({ x, y });
+    }
+    tree = pts.map(p => {
+      const r = Math.random();
+      const type = r < 0.28 ? 'lily' : r < 0.62 ? 'gerbera' : 'azalea';
+      const sDisp = d / 2 * 1.08 * sizeFactor[type] * rand(0.92, 1.1);
+      const key = (p.y - L.topY) / (L.tipY - L.topY);  // 1 = abajo
+      return {
+        x: p.x, y: p.y, type,
+        spr: pick(SPR[type]),
+        rot: rand(0, Math.PI * 2),
+        k: sDisp / 40,
+        delay: 2300 + (1 - clamp(key)) * 3000 + rand(0, 450),
+      };
+    });
+
+    // ramas hacia algunas flores
+    const cand = tree.slice().sort(() => Math.random() - .5);
+    const anchors = [];
+    for (const c of cand) {
+      if (anchors.length >= 18) break;
+      if (anchors.every(a => Math.hypot(a.x - c.x, a.y - c.y) > unit * 0.5)) anchors.push(c);
+    }
+    const trunkLen = L.groundY - L.cy;
+    branches = anchors.map(a => {
+      const bsy = L.groundY - rand(0.5, 0.95) * trunkLen;
+      return {
+        sx: cx, sy: bsy, ex: a.x, ey: a.y,
+        cxp: cx + (a.x - cx) * 0.7, cyp: bsy + (a.y - bsy) * 0.2,
+        delay: Math.max(1500, a.delay - 900),
+        w: rand(2, 3.2) * (L.HW / 650) + 0.8,
+      };
+    });
+  }
+
+  /* ================= Flores plantadas con el click ================= */
+  const planted = [];
+  function makeFlower(x, headY, type, delay) {
+    const size = type === 'lily' ? rand(46, 64) : type === 'gerbera' ? rand(42, 58) : rand(30, 40);
+    const scale = Math.min(1, Math.max(0.62, Math.min(W, 900) / 900 + 0.25));
+    return {
+      x0: x + rand(-6, 6),
+      x1: x + rand(-40, 40),
+      y1: headY,
+      lean: rand(-60, 60),
+      type,
+      spr: pick(SPR[type]),
+      size: size * scale,
+      ph: rand(0, 6.28),
+      start: performance.now(),
+      delay,
+      growDur: rand(1500, 2300),
+      bloomDur: rand(1300, 1800),
+      leaves: [
+        { t: rand(0.2, 0.32), side: 1, len: rand(38, 60) },
+        { t: rand(0.42, 0.55), side: -1, len: rand(38, 60) },
+        { t: rand(0.62, 0.74), side: 1, len: rand(30, 46) },
+      ],
+    };
+  }
+
+  function stemPoint(f, t, time) {
+    const y0 = H + 8;
+    const cx = f.x0 + f.lean, cy = (y0 + f.y1) / 2;
+    const u = 1 - t;
+    const sway = Math.sin(time / 1500 + f.ph) * 5 * t * t;
+    return {
+      x: u * u * f.x0 + 2 * u * t * cx + t * t * f.x1 + sway,
+      y: u * u * y0 + 2 * u * t * cy + t * t * f.y1,
+    };
+  }
+
+  function drawLeaf(len, w, growth) {
+    ctx.save();
+    ctx.scale(growth, growth);
+    const g = ctx.createLinearGradient(0, 0, 0, -len);
+    g.addColorStop(0, '#1f6b43');
+    g.addColorStop(1, '#4fae6a');
+    ctx.fillStyle = g;
+    petalPath(len, w, 0.7);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(0, 0); ctx.lineTo(0, -len * 0.85);
+    ctx.strokeStyle = 'rgba(20,70,40,.5)';
+    ctx.lineWidth = 0.8;
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawPlanted(f, time) {
+    const el = time - f.start - f.delay;
+    if (el < 0) return;
+    const g = easeOut(clamp(el / f.growDur));
+    const b = clamp((el - f.growDur * 0.85) / f.bloomDur);
+
+    const n = 40;
+    ctx.beginPath();
+    for (let i = 0; i <= n; i++) {
+      const p = stemPoint(f, (i / n) * g, time);
+      i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y);
+    }
+    ctx.strokeStyle = '#2f8a52';
+    ctx.lineWidth = 3.2;
+    ctx.lineCap = 'round';
+    ctx.stroke();
+
+    f.leaves.forEach(l => {
+      if (g < l.t + 0.05) return;
+      const p = stemPoint(f, l.t, time);
+      const p2 = stemPoint(f, l.t + 0.02, time);
+      const ang = Math.atan2(p2.y - p.y, p2.x - p.x) + Math.PI / 2;
+      ctx.save();
+      ctx.translate(p.x, p.y);
+      ctx.rotate(ang + l.side * 0.95);
+      drawLeaf(l.len, l.len * 0.22, easeOut(clamp((g - l.t) * 3)));
+      ctx.restore();
+    });
+
+    const head = stemPoint(f, g, time);
+    const pAhead = stemPoint(f, Math.max(0, g - 0.03), time);
+    const tilt = Math.atan2(head.x - pAhead.x, -(head.y - pAhead.y)) * 0.4;
+    ctx.save();
+    ctx.translate(head.x, head.y);
+    ctx.rotate(tilt + Math.sin(time / 1300 + f.ph) * 0.04);
+    if (b <= 0) {
+      const bs = f.size * 0.22 * g;
+      ctx.fillStyle = f.type === 'azalea' ? '#f0b800' : '#f4a9c2';
+      ctx.beginPath();
+      ctx.ellipse(0, -bs * 0.6, bs * 0.7, bs * 1.2, 0, 0, 7);
+      ctx.fill();
+      ctx.fillStyle = '#2f8a52';
+      ctx.beginPath();
+      ctx.ellipse(0, 0, bs * 0.6, bs * 0.45, 0, 0, 7);
+      ctx.fill();
+    } else {
+      const open = easeBack(b);
+      const glow = ctx.createRadialGradient(0, 0, 0, 0, 0, f.size * 1.5 * open);
+      glow.addColorStop(0, 'rgba(255,215,110,.28)');
+      glow.addColorStop(1, 'rgba(255,215,110,0)');
+      ctx.fillStyle = glow;
+      ctx.beginPath(); ctx.arc(0, 0, f.size * 1.5 * open, 0, 7); ctx.fill();
+      const k = f.size / 40 * open;
+      ctx.drawImage(f.spr, -100 * k, -100 * k, 200 * k, 200 * k);
+    }
+    ctx.restore();
+  }
+
+  /* ================= Flores que caen ================= */
+  const falling = [];
+  let nextFall = 0;
+  function spawnFall(time, offX) {
+    if (!tree.length) return;
+    const f = pick(tree);
+    falling.push({
+      x: f.x + offX, y: f.y,
+      vy: rand(45, 85) * (L.HW / 650 + 0.3),
+      ph: rand(0, 6.28), rot: rand(0, 6.28), vr: rand(-1.2, 1.2),
+      spr: f.spr, k: f.k * 0.85, landed: 0,
+    });
+  }
+
+  /* ================= Escena ================= */
+  let state = 'idle';
+  let t0 = 0;
+  let lastT = 0;
+  const T = { groundIn: 500, trunk: 1300, slide: 6400, ready: 6400, footer: 7600, type: 7900 };
+
+  function drawTree(el, offX) {
+    ctx.save();
+    ctx.translate(offX, 0);
+
+    // ramas
+    const fade = 1 - 0.65 * clamp((el - 5600) / 1500);
+    ctx.lineCap = 'round';
+    ctx.globalAlpha = fade;
+    branches.forEach(b => {
+      const q = easeOut(clamp((el - b.delay) / 900));
+      if (q <= 0) return;
+      ctx.beginPath();
+      const n = 24;
+      for (let i = 0; i <= n; i++) {
+        const t = (i / n) * q, u = 1 - t;
+        const x = u * u * b.sx + 2 * u * t * b.cxp + t * t * b.ex;
+        const y = u * u * b.sy + 2 * u * t * b.cyp + t * t * b.ey;
+        i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+      }
+      ctx.strokeStyle = '#00897b';
+      ctx.lineWidth = b.w;
+      ctx.stroke();
+    });
+    ctx.globalAlpha = 1;
+
+    // tronco
+    const p = easeOut(clamp((el - T.trunk) / 1200));
+    if (p > 0) {
+      const bw = L.HW * 0.075;
+      const total = L.groundY - L.cy;
+      const n = 30;
+      const left = [], right = [];
+      for (let i = 0; i <= n; i++) {
+        const t = i / n;
+        const y = L.groundY - t * p * total;
+        const w = bw * Math.pow(1 - t * p, 1.6) + 1.2;
+        const bend = Math.sin(t * Math.PI) * 2;
+        left.push([L.finalX - w / 2 + bend, y]);
+        right.push([L.finalX + w / 2 + bend, y]);
+      }
+      ctx.beginPath();
+      left.forEach(([x, y], i) => i ? ctx.lineTo(x, y) : ctx.moveTo(x, y));
+      right.reverse().forEach(([x, y]) => ctx.lineTo(x, y));
+      ctx.closePath();
+      ctx.fillStyle = '#00897b';
+      ctx.fill();
+    }
+
+    // flores del árbol
+    for (let i = 0; i < tree.length; i++) {
+      const f = tree[i];
+      const e = el - f.delay;
+      if (e <= 0) continue;
+      const b = easeBack(clamp(e / 900));
+      drawSprite(f.spr, f.x, f.y, f.k * b, f.rot);
+    }
+    ctx.restore();
+  }
+
+  function frame(time) {
+    ctx.clearRect(0, 0, W, H);
+    const dt = Math.min(0.05, (time - lastT) / 1000 || 0);
+    lastT = time;
+
+    if (state !== 'idle') {
+      const el = time - t0;
+
+      // semilla que cae
+      if (el < 800) {
+        const y = L.dotY + (L.groundY - L.dotY) * easeIn(clamp(el / 800));
+        const g = ctx.createRadialGradient(L.startX - 3, y - 3, 1, L.startX, y, 11);
+        g.addColorStop(0, '#ffd35c'); g.addColorStop(1, '#c9780c');
+        ctx.fillStyle = g;
+        ctx.beginPath(); ctx.arc(L.startX, y, 10, 0, 7); ctx.fill();
+      }
+
+      // línea del suelo
+      const gp = easeOut(clamp((el - T.groundIn) / 900));
+      if (gp > 0) {
+        const mid = (L.gx0 + L.gx1) / 2, half = (L.gx1 - L.gx0) / 2 * gp;
+        ctx.beginPath();
+        ctx.moveTo(mid - half, L.groundY);
+        ctx.lineTo(mid + half, L.groundY);
+        ctx.strokeStyle = '#1c1c1c';
+        ctx.lineWidth = 2.5;
+        ctx.lineCap = 'butt';
+        ctx.stroke();
+      }
+
+      // el árbol se desliza a su lugar (solo en pantallas anchas)
+      const slide = easeInOut(clamp((el - T.slide) / 1500));
+      const offX = (L.startX - L.finalX) * (1 - slide);
+      drawTree(el, offX);
+
+      // flores que caen
+      if (el > T.footer && time > nextFall) {
+        spawnFall(time, offX);
+        nextFall = time + rand(500, 1100);
+      }
+      for (let i = falling.length - 1; i >= 0; i--) {
+        const f = falling[i];
+        let alpha = 1;
+        if (!f.landed) {
+          f.y += f.vy * dt;
+          f.x += Math.sin(time / 600 + f.ph) * 22 * dt;
+          f.rot += f.vr * dt;
+          if (f.y >= L.groundY - 6) { f.y = L.groundY - 6; f.landed = time; }
+        } else {
+          alpha = 1 - (time - f.landed) / 1400;
+          if (alpha <= 0) { falling.splice(i, 1); continue; }
+        }
+        drawSprite(f.spr, f.x, f.y, f.k, f.rot, alpha);
+      }
+
+      // flores plantadas
+      planted.forEach(f => drawPlanted(f, time));
+    }
+    requestAnimationFrame(frame);
+  }
+
+  /* ================= Texto que se escribe ================= */
+  const TXT1 = '🌼 Feliz Día de las Flores Amarillas 🌼';
+  const TXT2 = 'Cada flor que ves aquí es un latido de mi corazón.\nAsí como el sol ilumina los campos, tú iluminas mi vida.\nQue estas flores te recuerden lo especial que eres para mí.';
+  const TXT3 = '- ¡TE AMO ERIKA!';
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+  async function typeAll() {
+    const cur = document.createElement('span');
+    cur.className = 'cursor';
+    cur.textContent = '_';
+    const parts = [[t1, TXT1, 60], [t2, TXT2, 44], [t3, TXT3, 75]];
+    for (const [el, txt, sp] of parts) {
+      let shown = '';
+      for (const ch of Array.from(txt)) {
+        shown += ch;
+        el.textContent = shown;
+        el.appendChild(cur);
+        await sleep(ch === '\n' ? 420 : sp + (ch === '.' || ch === ',' ? 200 : 0));
+      }
+      await sleep(450);
+    }
+  }
+
+  /* ================= Interacción ================= */
+  window.addEventListener('pointerdown', e => {
+    if (state === 'idle') {
+      state = 'run';
+      t0 = performance.now();
+      startEl.classList.add('gone');
+      setTimeout(() => footEl.classList.add('on'), T.footer);
+      setTimeout(typeAll, T.type);
+      setTimeout(() => hintEl.classList.add('on'), 9000);
+      return;
+    }
+    if (performance.now() - t0 < T.ready) return;
+    const y = Math.max(H * 0.12, Math.min(e.clientY, H - 30));
+    planted.push(makeFlower(e.clientX, y, pick(TYPES), 0));
+    if (planted.length > 120) planted.shift();
+  });
+
+  window.addEventListener('resize', () => { layout(); buildTree(); });
+
+  layout();
+  buildTree();
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
